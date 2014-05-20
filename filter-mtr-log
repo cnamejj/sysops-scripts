@@ -1,0 +1,135 @@
+#!/usr/bin/gawk -f
+
+BEGIN \
+{
+    TIME_PREF = "^--- Now"
+    MAX_FAIL_RATE = 26;
+
+    lead_map["54.240.229"] = "NOPTR.amazonaws.com"
+    lead_map["72.21.220"] = "NOPTR.amazonaws.com"
+    lead_map["72.21.222"] = "NOPTR.amazonaws.com"
+    lead_map["216.182.224"] = "NOPTR.amazonaws.com"
+    lead_map["27.0.0"] = "NOPTR.amazonaws.com"
+    lead_map["203.83.223"] = "NOPTR.amazonaws.com"
+    lead_map["180.87.15"] = "tatacommunications.com"
+    lead_map["216.182.232"] = "NOPTR.amazonaws.com"
+    lead_map["54.240.228"] = "NOPTR.amazonaws.com"
+    lead_map["68.87.194"] = "NOPTR.comcast.net"
+}
+
+function host_to_comp(full_host) \
+{
+    if(match(full_host, "\\.sjc[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "SJC.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.sfo[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "SFO.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.jfk[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "JFK.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.mci[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "MCI.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.iad[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "IAD.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.dca[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "DCA.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.ord[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "ORD.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.dfw[0-9].\\.atlas\\.cogentco\\.com"))
+    {
+	cleaned_host = "DFW.atlas.cogentco.com"
+    }
+    else if(match(full_host, "\\.compute-[0-9]*\\.amazonaws\\.com"))
+    {
+	cleaned_host = "compute.amazonaws.com"
+    }
+    else if(match(full_host, "\\.us-west-[0-9]*\\.compute\\.amazonaws\\.com"))
+    {
+	cleaned_host = "us-west.amazonaws.com"
+    }
+    else if(match(full_host, "\\.ap-northeast-[0-9]*\\.compute\\.amazonaws\\.com"))
+    {
+	cleaned_host = "ap-northeast.amazonaws.com"
+    }
+    else if(match(full_host, "\\.ap-southeast-[0-9]*\\.compute\\.amazonaws\\.com"))
+    {
+	cleaned_host = "ap-southeast.amazonaws.com"
+    }
+    else if(match(full_host, "\\.sanjose\\.ca\\.ibone\\.comcast\\.net"))
+    {
+	cleaned_host = "sanjose.ca.ibone.comcast.net";
+    }
+    else if(match(full_host, "^205\\.251\\.2[0-9].\\."))
+    {
+	cleaned_host = "NOPTR.amazonaws.com"
+    }
+    else
+    {
+	np = split(full_host, parts, ".");
+	if( np == 4)
+	{
+	    lead = parts[1] "." parts[2] "." parts[3]
+	    general = lead_map[lead]
+	    if( general != "")  cleaned_host = general
+            else cleaned_host = full_host
+	}
+	else cleaned_host = full_host
+    }
+
+    return(cleaned_host)
+}
+
+{
+    failrate = 0.0;
+    newstep = 0;
+    curr_step = 0;
+}
+
+match($0, TIME_PREF) && prev != TIME_PREF \
+{
+    print;
+    prev = TIME_PREF;
+}
+
+$1 != TIME_PREF && $1 != "HOST:" && $2 != "???" \
+{
+    step = $1;
+    sub( "\\|--$", "", step);
+    if(substr(step,length(step)) == "." && step != ".")
+    {
+	curr_step = step;
+	failrate = $3;
+	sub( "%", "", failrate);
+	if(comp[step] != host_to_comp($2)) newstep = 1;
+
+	if(failrate >= MAX_FAIL_RATE || newstep)
+	{
+	    sub( "\\|--", "", $0);
+	    printf " %s", $0;
+
+	    if(newstep)
+	    {
+		if( host[curr_step] != "") printf " WAS %s", host[curr_step]
+        	if( host[curr_step] != comp[curr_step]) printf " (%s)", comp[curr_step];
+		host[curr_step] = $2;
+		comp[curr_step] = host_to_comp($2)
+	    }
+	    else if(failrate >= MAX_FAIL_RATE) printf " FAIL %.1f%%", failrate;
+
+	    printf "\n";
+	    prev = "";
+	}
+    }
+}

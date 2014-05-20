@@ -1,0 +1,80 @@
+#!/bin/bash
+
+if [ "$1" = "" ]
+then
+	echo "Syntax: $0 hostname"
+	exit 1
+fi
+
+# ---
+
+WAIT=45
+MIN_WAIT=5
+HOST="$1"
+
+# ---
+
+get_first_ip() \
+{
+    dig +noall +answer "$1" \
+    | gawk -v host="$1" '
+
+	BEGIN \
+	{
+	    want = host ".";
+	}
+
+	$(NF-1) == "A" && $1 == want \
+	{
+	    printf "%s ", $NF;
+	    exit;
+	}
+
+	$(NF-1) == "CNAME" && $1 == want \
+	{
+	    want = $NF;
+	}';
+}
+
+get_all_ips() \
+{
+    dig +noall +answer "$1" \
+    | gawk -v host="$1" '
+
+	BEGIN \
+	{
+	    want = host ".";
+	}
+
+	$(NF-1) == "A" && $1 == want \
+	{
+	    printf "%s ", $NF;
+	}
+
+	$(NF-1) == "CNAME" && $1 == want \
+	{
+	    want = $NF;
+	}';
+}
+
+# ---
+
+while [ 1 ]
+do
+	dest="$(get_first_ip "${HOST}")"
+	allips="$(get_all_ips "${HOST}")"
+	date +"--- Now: %m/%d/%Y %H:%M:%S  dest: ${HOST}/${dest}  all: ${allips}"
+	st="$(date +'%s')"
+	mtr -i 1 -l -w -r -c 4 "${HOST}"
+	en="$(date +'%s')"
+	left=$(( ${WAIT} - ( ${en} - ${st} ) ))
+	if [ "${left}" -gt 0 ]
+	then
+	    echo "--- Wait ${left} seconds"
+	    sleep "${left}"
+	else
+	    echo "--- Wait briefly"
+	    sleep "${MIN_WAIT}"
+	fi
+done
+	
