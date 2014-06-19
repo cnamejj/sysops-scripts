@@ -1,0 +1,111 @@
+#!/bin/bash
+
+typeset -i n_commits
+
+st_hash=$1
+en_hash=$2
+git_path="$3"
+
+# ---
+
+if [ "${st_hash}" = "" -o "${en_hash}" = "" ]
+then
+	echo "**Error** A start and end hash value are required, got '${st_hash}' and '${en_hash}'."
+	exit 1
+fi
+
+# ---
+
+if [ "${git_path}" != "" ]
+then
+	cd "${git_path}"
+	rc=$?
+	if [ ${rc} -ne 0 ]
+	then
+	    	echo "Can't change to directory '${git_path}', rc=${rc}"
+		exit 1
+	fi
+fi
+
+# ---
+
+n_commits="$(git log "${st_hash}..${en_hash}" --no-merges --pretty='%H' | wc -l)"
+
+#echo "Found ${n_commits} commits between hash '${st_hash}' and '${en_hash}'"
+
+git log "${st_hash}..${en_hash}" --no-merges --graph --pretty='~~~ %d~~~ %H~~~ %aN~~~ <%aE>~~~ %s' \
+| git name-rev --stdin \
+| awk '\
+
+    BEGIN \
+    {
+	MAX_OUT_LEN = 200;  # Something very large for now...
+    }
+
+    {
+	nparts = split( $0, parts, "~~~ ");
+	if( nparts != 6)
+	{
+#     	    out = $0;
+	    out = "";
+	}
+	else
+	{
+	    graph = parts[1];
+	    sub( " $", "", graph);
+
+	    decorate1 = parts[2];
+	    sub( "^.*\\(", "", decorate1);
+	    sub( "\\)$", "", decorate1);
+	    gsub( "^ *", "", decorate1);
+	    gsub( " *$", "", decorate1);
+	    sub( "origin/master, ", "", decorate1);
+	    sub( "origin/HEAD, ", "", decorate1);
+	    sub( "^HEAD, ", "", decorate1);
+	    sub( "^tags/", "", decorate1);
+	    sub( "^remotes/", "", decorate1);
+	    sub( "^origin/", "", decorate1);
+	    sub( ", deploy$", "", decorate1);
+
+	    short_hash = substr( parts[3],1,7);
+
+	    decorate2 = parts[3];
+	    sub( "^.*\\(", "", decorate2);
+	    sub( "\\)$", "", decorate2);
+	    gsub( "^ *", "", decorate2);
+	    gsub( " *$", "", decorate2);
+	    sub( "^HEAD, ", "", decorate2);
+	    sub( "^tags/", "", decorate2);
+	    sub( "^remotes/", "", decorate2);
+	    sub( "^origin/", "", decorate2);
+	    sub( ", deploy$", "", decorate2);
+
+	    if( decorate1 != "" && substr(decorate2,1,length(decorate1)) != decorate1)
+	      decorate = decorate1 " / " decorate2;
+	    else decorate = decorate2;
+
+	    author_name = parts[4];
+	    author_email = parts[4];
+	    author = author_name " " author_email;
+
+	    commit_msg = parts[6];
+
+#	    out = graph " " short_hash " " decorate ": " author ", " commit_msg;
+# -- Simplified output to make cut-n-paste into deploy log easier
+	    out = "* " commit_msg " (" short_hash ") " author_name;
+
+	    if( length(out) > MAX_OUT_LEN) out = substr( out, 1, MAX_OUT_LEN - 3) "...";
+	}
+
+	if( out != "")
+	{
+	    ncommit++;
+	    printf "%s\n", out;
+	}
+    }
+
+    END \
+    {
+	if( !ncommit) printf "No changes found.\n";
+    }'
+

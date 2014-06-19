@@ -1,0 +1,61 @@
+#!/bin/bash
+
+logfile="$1"
+
+if [ "${logfile}" = "" ]
+then
+	logfile="/var/log/auth.log"
+fi
+
+# ---
+
+(
+ufw status \
+| gawk '
+    $2 == "DENY" \
+    {
+	printf "UFW %s\n", $3;
+    }'
+
+gawk '\
+    /sshd/ && /Failed password/ \
+    {
+	sub( "^.*Failed password for ", "");
+	sub( "^invalid user ", "");
+	sub( " port .*$", "");
+	sub( " from ", " ");
+	print;
+    }' "${logfile}" \
+| gawk '
+    {
+	freq[ $2]++;
+    }
+
+    END \
+    {
+	for( ip in freq)
+	{
+	    printf "FAIL %s %d\n", ip, freq[ ip];
+	}
+    }'
+) | gawk '
+
+    $1 == "UFW" \
+    {
+	blocked[ $2] = 1;
+    }
+
+    $1 == "FAIL" \
+    {
+	failed[ $2] = $3;
+#printf "dbg:: Failed %s %d\n", $2, failed[ $2];
+    }
+
+    END \
+    {
+	for( ip in failed)
+	{
+	    if( blocked[ ip]) printf "Blocked %s\n", ip;
+	    else printf "New %s %d\n", ip, failed[ ip];
+	}
+    }'

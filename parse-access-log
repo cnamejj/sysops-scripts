@@ -1,0 +1,164 @@
+#!/bin/gawk -f
+
+BEGIN \
+{
+    SCAN = 1
+    FREE = 2;
+
+    AP_FROM = "\\(from\\)";
+    AP_P2 = "\\(p2\\)";
+    AP_P3 = "\\(p3\\)";
+    AP_TIME = "\\(time\\)";
+    AP_TZ = "\\(tz\\)";
+    AP_REQ = "\\(req\\)";
+    AP_RC = "\\(rc\\)";
+    AP_SIZE = "\\(size\\)";
+    AP_REF = "\\(ref\\)";
+    AP_BROWSER = "\\(browser\\)";
+    AP_ACTION = "\\(action\\)";
+    AP_URI = "\\(uri\\)";
+    AP_PROT = "\\(prot\\)";
+
+    DQT = "\"";
+    AMP = "&";
+    ESC_AMP = "\\\\&";
+
+    if( patt == "") patt = AP_FROM " " AP_URI;
+    if( blank == "") blank = " ";
+
+    pnum[ AP_FROM] = 1;
+    pnum[ AP_P2] = 2;
+    pnum[ AP_P3] = 3;
+    pnum[ AP_TIME] = 4;
+    pnum[ AP_TZ] = 5;
+    pnum[ AP_REQ] = 6;
+    pnum[ AP_RC] = 7;
+    pnum[ AP_SIZE] = 8;
+    pnum[ AP_REF] = 9;
+    pnum[ AP_BROWSER] = 10;
+    pnum[ AP_ACTION] = 11;
+    pnum[ AP_URI] = 12;
+    pnum[ AP_PROT] = 13;
+
+    PN_REQ = pnum[ AP_REQ];
+    PN_ACTION = pnum[ AP_ACTION];
+    PN_URI = pnum[ AP_URI];
+    PN_PROT = pnum[ AP_PROT];
+
+    placehold[ 1] = AP_FROM;
+    placehold[ 2] = AP_P2;
+    placehold[ 3] = AP_P3;
+    placehold[ 4] = AP_TIME;
+    placehold[ 5] = AP_TZ;
+    placehold[ 6] = AP_REQ;
+    placehold[ 7] = AP_RC;
+    placehold[ 8] = AP_SIZE;
+    placehold[ 9] = AP_REF;
+    placehold[ 10] = AP_BROWSER;
+    placehold[ 11] = AP_ACTION;
+    placehold[ 12] = AP_URI;
+    placehold[ 13] = AP_PROT;
+
+    MIN_FIELDS = pnum[ AP_BROWSER];
+    ALL_FIELDS = pnum[ AP_PROT];
+}
+
+{
+    cpop = 0;
+    hold = "";
+    act = FREE;
+
+    for( op = 1; op <= NF; op++)
+    {
+	curr = $op;
+#printf "++dbg: op=%d, cpop=%d, act=%d, hold(%s) op(%s)\n", op, cpop, act, hold, curr;
+
+	if( act == FREE)
+	{
+	    tip = substr( curr, 1, 1);
+	    if( tip == DQT)
+	    {
+		act = SCAN;
+		curr = substr( curr, 2);
+	    }
+	    else
+	    {
+		cpop++;
+		plist[ cpop] = curr;
+	    }
+	}
+
+	if( act == SCAN)
+	{
+	    tail = substr( curr, length( curr));
+	    if( tail == DQT)
+	    {
+		cpop++;
+		if( hold != "") hold = hold " ";
+		hold = hold substr( curr, 1, length( curr) - 1);
+                if( hold == "") plist[ cpop] = missing;
+                else plist[ cpop] = hold;
+		gsub( " ", blank, plist[ cpop]);
+		hold = "";
+		act = FREE;
+	    }
+	    else
+	    {
+		if( hold != "") hold = hold " ";
+		hold = hold curr;
+	    }
+	}
+    }
+
+    if( act == SCAN)
+    {
+	cpop++;
+	if( hold == "") plist[ cpop] = missing;
+	else plist[ cpop] = hold;
+	gsub( " ", blank, plist[ cpop]);
+	hold = "";
+	act = FREE;
+    }
+
+    for( cpop++; cpop <= MIN_FIELDS; cpop++)
+      plist[ cpop] = missing;
+
+    nn = split( plist[ PN_REQ], bits, blank);
+#printf "++dbg:: nn=%d, req(%s)\n", nn, plist[ op];
+
+    if( !nn) plist[ PN_ACTION] = plist[ PN_URI] = plist[ PN_PROT] = missing;
+    else if( nn == 1)
+    {
+	plist[ PN_ACTION] = bits[ 1];
+	plist[ PN_URI] = plist[ PN_PROT] = missing;
+    }
+    else if( nn == 2)
+    {
+	plist[ PN_ACTION] = bits[ 1];
+	plist[ PN_URI] = bits[ 2];
+	plist[ PN_PROT] = missing;
+    }
+    else
+    {
+	plist[ PN_ACTION] = bits[ 1];
+
+	plist[ PN_URI] = bits[ 2];
+	for( op = 3; op < nn; op++)
+	  plist[ PN_URI] = plist[ PN_URI] " " bits[ op];
+
+	plist[ PN_PROT] = bits[ nn];
+    }
+
+#    for( op = 1; op <= ALL_FIELDS; op++)
+#      printf "++dbg: %d. %s (%s)\n", op, placehold[ op], plist[ op];
+
+    out = patt;
+    for( ns = 1; ns <= ALL_FIELDS; ns++)
+    {
+	gsub( AMP, ESC_AMP, plist[ ns]);
+#printf "++dbg: %d. from(%s) to(%s)\n", ns, placehold[ ns], plist[ ns];
+	gsub( placehold[ ns], plist[ ns], out);
+    }
+
+    printf "%s\n", out;
+}
