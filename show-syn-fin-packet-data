@@ -1,0 +1,115 @@
+#!/bin/gawk -f
+
+# Simple script to summarize data from "tcpdump" to show the amount
+# of traffic sent/received.  It shows the amount of data on a per
+# connection basis and then summarized by sending IP address once it
+# exhausts the input file.
+#
+# Either run it with data from "tcpdump" piped into it:
+#
+# tcpdump -n -l -p 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0' | summ-syn-fin-packet-data
+#
+# to see traffic data for TCP connections as they shutdown.  Or save
+# the "tcpdump" output to a file and run the script against the file
+# sometime later.
+#
+# tcpdump -n -l -p 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0' >/var/tmp/tcp-connection-summary.txt
+# summ-syn-fin-packet-data /var/tmp/tcp-connection-summary.txt
+#
+
+BEGIN \
+{
+    SYN = "S"
+    FIN = "F"
+    FINPUSH = "FP"
+    DELIM = ":"
+    DOT = "."
+}
+
+function hrv(rawnumber) \
+{
+    shownumber = rawnumber
+    unit = "b"
+
+    if(shownumber > 1024)
+    {
+	unit = "k"
+	shownumber /= 1024.0
+	if(shownumber > 1024.0)
+        {
+	    unit = "m"
+	    shownumber /= 1024.0
+	    if(shownumber > 1024.0)
+	    {
+		unit = "g"
+		shownumber /= 1024.0
+		if(shownumber > 1024.0)
+	        {
+		    unit = "t"
+		    shownumber /= 1024.0
+		}
+	    }
+	}
+    }
+
+    display = sprintf("%.2f%s", shownumber, unit)
+    return(display)
+}
+
+$2 == "IP" && / seq / && /Flags / \
+{
+    key = $3 DELIM $5
+    sub(":$", "", key)
+
+    fl = $0
+    sub(".*Flags \\[", "", fl)
+    sub("\\].*", "", fl)
+    gsub("\\.", "", fl)
+
+    if(fl == SYN || fl == FIN || fl == FINPUSH)
+    {
+	seq = $0
+	sub(".*seq ", "", seq)
+	sub(",.*", "", seq)
+	if(fl == FINPUSH)
+	{
+	    sub(".*:", "", seq)
+	    fl = FIN
+	}
+	seq += 0
+
+	seen[key] = 1
+	count[key DELIM fl] = seq
+
+	if(fl == FIN && count[key DELIM SYN])
+	{
+	    disp = key
+	    sub(DELIM, " -> ", disp)
+	    printf "%8d %8s %s\n", seq, hrv(seq), disp
+	}
+    }
+}
+
+END \
+{
+    for(key in seen)
+    {
+	nwords = split(key, word, DELIM)
+	bytes_sent = count[key DELIM FIN]
+
+        if(nwords == 2 && bytes_sent && count[key DELIM SYN])
+	{
+	    nnibs = split(word[1], nib, DOT)
+            if(nnibs == 5)
+	    {
+		sender = nib[1] DOT nib[2] DOT nib[3] DOT nib[4]
+		iplist[sender]++
+		ipcount[sender] += bytes_sent
+	    }
+	}
+    }
+
+    print "- - - Aggregate by IP"
+
+    for(ip in ipcount) printf "%10d %8s %s\n", ipcount[ip], hrv(ipcount[ip]), ip
+}
