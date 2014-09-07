@@ -7,14 +7,14 @@
 #
 # Either run it with data from "tcpdump" piped into it:
 #
-# tcpdump -n -l -p 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0' | summ-syn-fin-packet-data
+# tcpdump -n -l -p 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0' | show-syn-fin-packet-data
 #
 # to see traffic data for TCP connections as they shutdown.  Or save
 # the "tcpdump" output to a file and run the script against the file
 # sometime later.
 #
 # tcpdump -n -l -p 'tcp[tcpflags] & (tcp-syn|tcp-fin) != 0' >/var/tmp/tcp-connection-summary.txt
-# summ-syn-fin-packet-data /var/tmp/tcp-connection-summary.txt
+# show-syn-fin-packet-data /var/tmp/tcp-connection-summary.txt
 #
 
 BEGIN \
