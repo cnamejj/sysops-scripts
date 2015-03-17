@@ -70,6 +70,8 @@ function calc_elap_time(syn_time, fin_time) \
 
     if( fin_secs < syn_secs ) fin_secs += SECS_PER_DAY
 
+    delete parts
+
     return(fin_secs - syn_secs)
 }
 
@@ -97,40 +99,22 @@ $2 == "IP" && / seq / && /Flags / \
 	}
 	seq += 0
 
-	seen[key] = 1
 	count[key DELIM fl] = seq
 	stamp[key DELIM fl] = when
 
 	if(fl == FIN && count[key DELIM SYN])
 	{
+            nsock++
 	    elap = calc_elap_time(stamp[key DELIM SYN], when)
 	    disp = key
 	    sub(DELIM, " -> ", disp)
-	    printf "%12.6f %8d %8s %s\n", elap, seq, hrv(seq), disp
-	}
-    }
-}
+	    printf "%4d. %s %12.6f %8d %8s %s\n", nsock, strftime("%Y/%m/%d-%H:%M:%S"), elap, seq, hrv(seq), disp
 
-END \
-{
-    for(key in seen)
-    {
-	nwords = split(key, word, DELIM)
-	bytes_sent = count[key DELIM FIN]
-
-        if(nwords == 2 && bytes_sent && count[key DELIM SYN])
-	{
-	    nnibs = split(word[1], nib, DOT)
-            if(nnibs == 5)
-	    {
-		sender = nib[1] DOT nib[2] DOT nib[3] DOT nib[4]
-		iplist[sender]++
-		ipcount[sender] += bytes_sent
-	    }
+            delete count[key DELIM fl]
+            delete stamp[key DELIM fl]
 	}
+
     }
 
-    print "- - - Aggregate by IP"
-
-    for(ip in ipcount) printf "%10d %8s %s\n", ipcount[ip], hrv(ipcount[ip]), ip
+#    if( nsock && nsock % 100 == 0 ) printf "dbg:: Co/St: %d/%d\n", length(count), length(stamp)
 }
