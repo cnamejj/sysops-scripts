@@ -28,6 +28,12 @@ BEGIN \
     SECS_PER_MIN = 60
     SECS_PER_HOUR = SECS_PER_MIN * 60
     SECS_PER_DAY = SECS_PER_HOUR * 24
+
+    SOCK_LIFETIME = 120
+    CKPT_INTERVAL = 500
+
+    printf "Scanning data for FIN/SYN pairs, maximum socket lifetime %d seconds\n", SOCK_LIFETIME
+    fflush()
 }
 
 function hrv(rawnumber) \
@@ -58,6 +64,13 @@ function hrv(rawnumber) \
 
     display = sprintf("%.2f%s", shownumber, unit)
     return(display)
+}
+
+function timestring_to_secs(time_string) \
+{
+    nn = split(time_string, parts, ":")
+
+    return( parts[1] * SECS_PER_HOUR + parts[2] * SECS_PER_MIN + parts[3])
 }
 
 function calc_elap_time(syn_time, fin_time) \
@@ -102,13 +115,20 @@ $2 == "IP" && / seq / && /Flags / \
 	count[key DELIM fl] = seq
 	stamp[key DELIM fl] = when
 
-	if(fl == FIN && count[key DELIM SYN])
+	if(fl == FIN)
 	{
-            nsock++
-	    elap = calc_elap_time(stamp[key DELIM SYN], when)
-	    disp = key
-	    sub(DELIM, " -> ", disp)
-	    printf "%4d. %s %12.6f %8d %8s %s\n", nsock, strftime("%Y/%m/%d-%H:%M:%S"), elap, seq, hrv(seq), disp
+	    if(count[key DELIM SYN] != "")
+	    {
+                nsock++
+                elap = calc_elap_time(stamp[key DELIM SYN], when)
+	        disp = key
+	        sub(DELIM, " -> ", disp)
+	        printf "%4d. %s %12.6f %8d %8s %s\n", nsock, strftime("%Y/%m/%d-%H:%M:%S"), elap, seq, hrv(seq), disp
+                fflush()
+
+                delete count[key DELIM SYN]
+                delete stamp[key DELIM SYN]
+            }
 
             delete count[key DELIM fl]
             delete stamp[key DELIM fl]
@@ -116,5 +136,54 @@ $2 == "IP" && / seq / && /Flags / \
 
     }
 
-#    if( nsock && nsock % 100 == 0 ) printf "dbg:: Co/St: %d/%d\n", length(count), length(stamp)
+    if( nsock && nsock % CKPT_INTERVAL == 0 )
+    {
+        now = timestring_to_secs(strftime("%H:%M:%S"))
+
+        nn_count = length(count)
+        nn_stamp = length(stamp)
+
+        # ---
+
+        for( key in stamp )
+        {
+            if( stamp[key] != "" )
+	    {
+		key_age = now - int(timestring_to_secs(stamp[key]))
+                if( 0 <= key_age && key_age <= SOCK_LIFETIME ) copy_stamp[key] = stamp[key]
+                else
+		{
+		    printf "Dropped unpaired SYN packet from %s, %d secs ago, key %s\n", stamp[key], key_age, key
+		    fflush()
+		}
+	    }
+        }
+
+        delete stamp
+        for( key in copy_stamp ) stamp[key] = copy_stamp[key]
+        delete copy_stamp
+
+        # ---
+
+        for( key in count )
+        {
+            if( count[key] != "" && stamp[key] != "" ) copy_count[key] = count[key]
+        }
+
+        delete count
+        for( key in copy_count ) count[key] = copy_count[key]
+        delete copy_count
+
+        # ---
+
+#        printf "dbg:: Count: pre/post: %d/%d  Stamp: pre/pos: %d/%d\n", nn_count, length(count), nn_stamp, length(stamp)
+#	fflush()
+#
+#        seq = 1
+#        for(key in count)
+#        {
+#            printf "dbg:: %d. k'%s' count'%s' stamp'%s'\n", seq, key, count[key], stamp[key]
+#            seq++
+#        }
+    }
 }
