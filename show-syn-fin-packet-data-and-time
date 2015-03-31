@@ -150,6 +150,7 @@ $2 == "IP" && / seq / && /Flags / \
             if( stamp[key] != "" )
 	    {
 		key_age = now - int(timestring_to_secs(stamp[key]))
+                if( key_age < 0 ) key_age += SECS_PER_DAY
                 if( 0 <= key_age && key_age <= SOCK_LIFETIME ) copy_stamp[key] = stamp[key]
                 else
 		{
