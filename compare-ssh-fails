@@ -1,10 +1,13 @@
 #!/bin/bash
 
-logfile="$1"
+#      2 Did not receive identification string from 76.74.252.60
+#      2 Invalid user deploy from 211.143.157.130
 
-if [ "${logfile}" = "" ]
+if [ "${1}" = "" ]
 then
 	logfile="/var/log/auth.log"
+else
+	logfile="$*"
 fi
 
 # ---
@@ -18,6 +21,18 @@ ufw status \
     }'
 
 gawk '\
+    /sshd/ && / Did not receive identification string from / \
+    {
+	printf "N/A %s\n", $NF
+    }
+
+    /sshd/ && / Invalid user [a-zA-Z0-9_-]* from / \
+    {
+	sub( "^.* Invalid user ", "");
+	sub( " from ", " ");
+	print;
+    }
+
     /sshd/ && /Failed password/ \
     {
 	sub( "^.*Failed password for ", "");
@@ -25,7 +40,7 @@ gawk '\
 	sub( " port .*$", "");
 	sub( " from ", " ");
 	print;
-    }' "${logfile}" \
+    }' ${logfile} \
 | gawk '
     {
 	freq[ $2]++;
